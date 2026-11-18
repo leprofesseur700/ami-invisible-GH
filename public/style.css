@@ -1,0 +1,74 @@
+/* Réglages de base : tout le site utilise la même police et les mêmes marges */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, Arial, sans-serif;
+  background: #f4f1ea;           /* fond crème */
+  color: #2b2b2b;
+}
+main { max-width: 480px; margin: 0 auto; padding: 16px; }
+
+/* Barre du haut */
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px; background: #3b4a6b; color: white;
+}
+
+/* Chaque écran est caché, sauf celui qui a la classe "actif" */
+.vue { display: none; }
+.vue.actif { display: block; }
+.cache { display: none !important; }   /* pour cacher n'importe quel élément */
+
+h1, h2 { text-align: center; }
+
+/* Champs de saisie */
+input, textarea {
+  width: 100%; padding: 12px; margin: 6px 0;
+  font-size: 16px; border: 1px solid #c9c3b3; border-radius: 8px;
+}
+
+/* Boutons */
+button {
+  width: 100%; padding: 14px; margin: 6px 0;
+  font-size: 16px; border: none; border-radius: 10px;
+  background: #3b4a6b; color: white; cursor: pointer;
+}
+button.secondaire { background: #7a8aa8; }
+button.danger { background: #b5442f; }
+button.petit { width: auto; padding: 8px 12px; font-size: 14px; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Grandes cartes de l'accueil */
+.carte { padding: 28px 16px; font-size: 18px; margin: 12px 0; }
+.cadeau { background: #c98a1a; }
+
+/* Une ligne de sujet de prière */
+.ligne { background: white; padding: 10px; border-radius: 10px; margin: 10px 0; }
+.etiquette { font-weight: bold; font-size: 14px; color: #3b4a6b; }
+.actions { display: flex; gap: 8px; }
+.actions button { margin: 0; padding: 10px; }
+.plus { background: #4b8a5a; }
+
+/* Textes d'aide et messages */
+.aide, .info { text-align: center; color: #666; }
+.erreur { color: #b5442f; text-align: center; }
+.bandeau { background: #fff3cd; padding: 12px; border-radius: 10px; }
+
+/* Liste des sujets reçus */
+ul { padding: 0; list-style: none; }
+li { background: white; padding: 14px; border-radius: 10px; margin: 8px 0; }
+
+/* Boîte-cadeau */
+.boite {
+  display: block; width: 160px; height: 160px; margin: 20px auto;
+  font-size: 90px; background: white; border-radius: 24px;
+  animation: secouer 1.5s infinite;      /* elle bouge pour attirer l'oeil */
+}
+.boite.ouvert { animation: none; transform: scale(0.7); opacity: 0.5; }
+@keyframes secouer {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-6deg); }
+  75% { transform: rotate(6deg); }
+}
+.resultat { text-align: center; }
+.nom { font-size: 28px; font-weight: bold; color: #3b4a6b; margin: 4px 0 18px; }
