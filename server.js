@@ -18,15 +18,16 @@ app.use(express.static(path.join(__dirname, 'public'))); // le dossier "public" 
 // ------------------------------------------------------------
 // 1) CONNEXION À LA BASE DE DONNÉES
 // ------------------------------------------------------------
+const useSsl = ['true', '1', 'yes'].includes(String(process.env.DB_SSL || '').trim().toLowerCase());
+
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,                // adresse de la base
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER,                // nom d'utilisateur de la base
-  password: process.env.DB_PASSWORD,        // mot de passe de la base
-  database: process.env.DB_NAME,            // nom de la base
-  // Si DB_SSL vaut "true" (TiDB Cloud), on active la connexion sécurisée
-  ssl: process.env.DB_SSL === 'true' ? { minVersion: 'TLSv1.2', rejectUnauthorized: true } : undefined,
-  connectionLimit: 10                       // 10 connexions maximum en même temps
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT) || 4000,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  ssl: useSsl ? { minVersion: 'TLSv1.2', rejectUnauthorized: true } : undefined,
+  connectionLimit: 10
 });
 
 // ------------------------------------------------------------
@@ -304,32 +305,58 @@ app.post('/api/admin/revelation', exigerConnexion, exigerAdmin, route(async (req
 // 9) DÉMARRAGE
 // ------------------------------------------------------------
 
-// Crée ton compte administrateur au premier démarrage (infos prises dans .env)
 async function creerAdminSiBesoin() {
   const { ADMIN_PRENOM, ADMIN_PIN } = process.env;
   if (!ADMIN_PRENOM || !ADMIN_PIN) {
-    console.warn('ADMIN_PRENOM ou ADMIN_PIN manquant dans .env : aucun compte admin créé');
+    console.warn('ADMIN_PRENOM ou ADMIN_PIN manquant : aucun compte admin créé');
     return;
   }
-  const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin'");
-  if (admins.length) return;                  // un admin existe déjà
-  const pinBrouille = await bcrypt.hash(ADMIN_PIN, 10);
   try {
-    await pool.query("INSERT INTO users (prenom, pin_hash, role) VALUES (?, ?, 'admin')", [ADMIN_PRENOM, pinBrouille]);
+    const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin'");
+    if (admins.length) return;
+    const pinBrouille = await bcrypt.hash(ADMIN_PIN, 10);
+    await pool.query(
+      "INSERT INTO users (prenom, pin_hash, role) VALUES (?, ?, 'admin')",
+      [ADMIN_PRENOM, pinBrouille]
+    );
     console.log('Compte administrateur créé : ' + ADMIN_PRENOM);
   } catch (e) {
-    console.error('Impossible de créer l\'admin (prénom déjà utilisé ?) :', e.message);
+    console.error('Erreur lors de la vérification/création admin :', e.message);
   }
 }
 
-async function demarrer() {
+let initialisé = false;
+async function initialiserApp() {
+  if (initialisé) return;
   if (!process.env.JWT_SECRET) {
-    console.error('JWT_SECRET manquant dans .env');
-    process.exit(1);
+    throw new Error('JWT_SECRET manquant dans les variables d\'environnement');
   }
   await creerAdminSiBesoin();
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => console.log('Serveur démarré : http://localhost:' + port));
+  initialisé = true;
 }
 
-demarrer();
+// Middleware d'initialisation paresseuse pour l'environnement serverless (Vercel)
+app.use(async (req, res, next) => {
+  try {
+    await initialiserApp();
+    next();
+  } catch (e) {
+    console.error('Erreur d\'initialisation :', e.message);
+    res.status(500).json({ erreur: 'Erreur de configuration serveur' });
+  }
+});
+
+// En exécution locale / serveur classique (hors Vercel), on lance app.listen
+if (!process.env.VERCEL) {
+  initialiserApp()
+    .then(() => {
+      const port = process.env.PORT || 3000;
+      app.listen(port, () => console.log('Serveur démarré : http://localhost:' + port));
+    })
+    .catch((e) => {
+      console.error(e.message);
+      process.exit(1);
+    });
+}
+
+module.exports = app;
