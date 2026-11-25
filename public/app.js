@@ -142,11 +142,11 @@ $('btnPlus').addEventListener('click', () => ajouterLigne(null, '').focus());
 async function chargerPriere() {
   try {
     const r = await api('prayer');
-    if (!r.tire) {
-      $('messagePriere').textContent = "Le tirage n'a pas encore eu lieu. Reviens bientôt !";
-      $('listePriere').replaceChildren();
-      return;
-    }
+   if (!r.tire) {
+      $('messagePriere').textContent = r.tirageEnCours
+        ? "Tu n'as pas de personne attribuée pour le moment. Un nouveau tirage va avoir lieu, reviens bientôt !"
+        : "Le tirage n'a pas encore eu lieu. Reviens bientôt !";
+   }
     if (r.nouveauTirage) $('bandeau').classList.remove('cache');
     $('messagePriere').textContent = r.sujets.length
       ? 'Voici les sujets de la personne pour qui tu pries :'
@@ -196,13 +196,35 @@ async function ouvrirAdmin() {
   const e = await api('admin/etat');
   $('adminInfo').textContent = e.participants.length + ' participant(s) · tirages lancés : ' +
     e.nombreTirages + (e.revelee ? ' · révélation publiée' : '');
+  // L'avertissement apparaît si le tirage n'est plus complet (et que le jeu n'est pas fini)
+  $('alerteTirage').classList.toggle('cache', !(e.tirageIncomplet && !e.revelee));
+
   const lignes = e.participants.map((p) => {
     const li = document.createElement('li');
-    li.textContent = p;
+    li.className = 'ligne-participant';
+    const nom = document.createElement('span');
+    nom.textContent = p.prenom;
+    li.append(nom);
+    if (!e.revelee) {                                  // plus de suppression après la révélation
+      const btn = document.createElement('button');
+      btn.textContent = 'Supprimer';
+      btn.className = 'danger petit';
+      btn.addEventListener('click', async () => {
+        if (!confirm('Supprimer le compte de ' + p.prenom + ' et tous ses sujets de prière ?')) return;
+        try {
+          const r = await api('admin/users/' + p.id, 'DELETE');
+          await ouvrirAdmin();
+          $('adminMessage').textContent = r.tirageAReFaire
+            ? 'Compte supprimé. Il était dans le tirage : relance-le.'
+            : 'Compte supprimé ✓';
+        } catch (err) { $('adminMessage').textContent = err.message; }
+      });
+      li.append(btn);
+    }
     return li;
   });
   $('listeParticipants').replaceChildren(...lignes);
-  $('btnTirage').disabled = e.revelee;                          // tirage bloqué après la révélation
+  $('btnTirage').disabled = e.revelee;
   $('btnRevelation').disabled = e.revelee || e.nombreTirages === 0;
 }
 
@@ -222,6 +244,18 @@ $('btnRevelation').addEventListener('click', async () => {
     await ouvrirAdmin();
     $('adminMessage').textContent = 'Révélation publiée ✓';
   } catch (e) { $('adminMessage').textContent = e.message; }
+});
+
+// ---------- Supprimer mon compte ----------
+$('btnSupprimerCompte').addEventListener('click', async () => {
+  const pin = prompt('Pour supprimer ton compte et tous tes sujets de prière, entre ton code PIN :');
+  if (pin === null) return;                             // l'utilisateur a annulé
+  if (!confirm('Dernière confirmation : cette action est définitive. Supprimer mon compte ?')) return;
+  try {
+    await api('me', 'DELETE', { pin });
+    quitter();
+    alert('Ton compte a été supprimé.');
+  } catch (e) { alert(e.message); }
 });
 
 // ---------- Démarrage de la page ----------

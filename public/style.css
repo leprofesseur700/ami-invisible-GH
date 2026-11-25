@@ -72,3 +72,6 @@ li { background: white; padding: 14px; border-radius: 10px; margin: 8px 0; }
 }
 .resultat { text-align: center; }
 .nom { font-size: 28px; font-weight: bold; color: #3b4a6b; margin: 4px 0 18px; }
+
+/* Ligne d'un participant dans l'espace administrateur : prénom à gauche, bouton à droite */
+.ligne-participant { display: flex; justify-content: space-between; align-items: center; }

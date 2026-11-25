@@ -208,7 +208,7 @@ app.delete('/api/subjects/:id', exigerConnexion, exigerStandard, route(async (re
 app.get('/api/prayer', exigerConnexion, exigerStandard, route(async (req, res) => {
   const reglages = await lireReglages();
   const [tirage] = await pool.query('SELECT receiver_id FROM draws WHERE giver_id = ?', [req.user.id]);
-  if (!tirage.length) return res.json({ tire: false });   // pas encore de tirage pour cette personne
+  if (!tirage.length) return res.json({ tire: false, tirageEnCours: reglages.draw_round > 0 });
 
   // IMPORTANT : on envoie seulement les sujets, JAMAIS le prénom de la personne
   const [sujets] = await pool.query(
@@ -247,11 +247,15 @@ app.get('/api/revelation', exigerConnexion, exigerStandard, route(async (req, re
 // Voir l'état du jeu : qui est inscrit, combien de tirages, révélation faite ou non
 app.get('/api/admin/etat', exigerConnexion, exigerAdmin, route(async (req, res) => {
   const reglages = await lireReglages();
-  const [participants] = await pool.query("SELECT prenom FROM users WHERE role = 'standard' ORDER BY prenom");
+  const [participants] = await pool.query(
+    "SELECT id, prenom FROM users WHERE role = 'standard' ORDER BY prenom");
+  const [[comptage]] = await pool.query('SELECT COUNT(*) AS n FROM draws');
   res.json({
-    participants: participants.map((p) => p.prenom),
+    participants,                              // chaque participant avec son numéro et son prénom
     nombreTirages: reglages.draw_round,
-    revelee: !!reglages.revealed
+    revelee: !!reglages.revealed,
+    // Le tirage est "incomplet" si le nombre de lignes du tirage ne correspond plus au nombre de participants
+    tirageIncomplet: reglages.draw_round > 0 && comptage.n !== participants.length
   });
 }));
 
@@ -299,6 +303,46 @@ app.post('/api/admin/revelation', exigerConnexion, exigerAdmin, route(async (req
     return res.status(400).json({ erreur: 'Aucun tirage n\'a encore été fait' });
   await pool.query('UPDATE settings SET revealed = TRUE WHERE id = 1');
   res.json({ ok: true });
+}));
+
+// ------------------------------------------------------------
+// SUPPRESSION DE COMPTE
+// ------------------------------------------------------------
+
+// Supprimer MON compte (il faut redonner son code PIN)
+app.delete('/api/me', exigerConnexion, exigerStandard, route(async (req, res) => {
+  if (tropDEchecs(req.ip))
+    return res.status(429).json({ erreur: 'Trop d\'essais, réessaie dans 15 minutes' });
+  const reglages = await lireReglages();
+  if (reglages.revealed)
+    return res.status(403).json({ erreur: 'Le jeu est terminé : les comptes ne peuvent plus être supprimés' });
+
+  const pin = String(req.body.pin || '');
+  const [lignes] = await pool.query('SELECT pin_hash FROM users WHERE id = ?', [req.user.id]);
+  const bon = lignes.length > 0 && await bcrypt.compare(pin, lignes[0].pin_hash);
+  if (!bon) {
+    noterEchec(req.ip);
+    return res.status(403).json({ erreur: 'Code PIN incorrect' });
+  }
+  // Les sujets et les lignes du tirage partent avec le compte (ON DELETE CASCADE)
+  await pool.query('DELETE FROM users WHERE id = ?', [req.user.id]);
+  res.json({ ok: true });
+}));
+
+// L'administrateur supprime le compte d'un participant
+app.delete('/api/admin/users/:id', exigerConnexion, exigerAdmin, route(async (req, res) => {
+  const reglages = await lireReglages();
+  if (reglages.revealed)
+    return res.status(403).json({ erreur: 'Le jeu est terminé : les comptes ne peuvent plus être supprimés' });
+
+  // "role = 'standard'" garantit qu'on ne peut jamais supprimer le compte administrateur
+  const [cible] = await pool.query("SELECT id FROM users WHERE id = ? AND role = 'standard'", [req.params.id]);
+  if (!cible.length) return res.status(404).json({ erreur: 'Compte introuvable' });
+
+  const [dansTirage] = await pool.query(
+    'SELECT 1 FROM draws WHERE giver_id = ? OR receiver_id = ? LIMIT 1', [req.params.id, req.params.id]);
+  await pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
+  res.json({ ok: true, tirageAReFaire: dansTirage.length > 0 });
 }));
 
 // ------------------------------------------------------------
